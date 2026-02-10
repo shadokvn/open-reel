@@ -42,11 +42,12 @@ class FaceTracker:
         """
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
         path = []
         frame_idx = 0
         
-        console.print(f'[bold blue]Extracting premium motion path...[/bold blue]')
+        console.print(f'[bold blue]Extracting premium motion path ({total_frames} frames)...[/bold blue]')
         
         while cap.isOpened():
             ret, frame = cap.read()
@@ -55,20 +56,28 @@ class FaceTracker:
             
             # Sample every 2nd frame for speed, interpolate later
             if frame_idx % 2 == 0:
-                path.append(self.get_face_data(frame))
+                last_pos = self.get_face_data(frame)
+                path.append(last_pos)
             else:
-                path.append(path[-1]) # Keep last seen pos
+                path.append(path[-1] if path else (0.5, 0.5, 1.0))
             
             frame_idx += 1
         cap.release()
         
-        # SMOOTHING: Using a large Gaussian-like window to make it feel like a gimbal
+        if not path:
+            return np.array([[0.5, 0.5, 1.0]])
+
+        # SMOOTHING
         path = np.array(path)
         smoothed_path = np.copy(path)
         
-        # Smooth X, Y, and Scale separately
-        window = int(fps) # 1 second smoothing window
+        # Adjust window size based on path length to avoid broadcast errors
+        window = min(int(fps), len(path))
+        if window < 1: window = 1
+        
         for i in range(3):
-            smoothed_path[:, i] = np.convolve(path[:, i], np.ones(window)/window, mode='same')
+            # Ensure window is odd for centered 'same' mode or handle small paths
+            kernel = np.ones(window)/window
+            smoothed_path[:, i] = np.convolve(path[:, i], kernel, mode='same')
             
         return smoothed_path

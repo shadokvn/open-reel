@@ -25,7 +25,8 @@ def cli():
 @click.argument('video_path', type=click.Path(exists=True))
 @click.option('--api-key', envvar='GEMINI_API_KEY', help='Gemini API Key')
 @click.option('--premium', is_flag=True, help='Enable premium dynamic tracking and subtitles')
-def process(video_path, api_key, premium):
+@click.option('--visual-ai', is_flag=True, help='Upload video to Gemini for multi-modal visual analysis')
+def process(video_path, api_key, premium, visual_ai):
     """Process a video file with professional AI editing."""
     if not api_key:
         console.print("[bold red]Error: No Gemini API Key provided.[/bold red]")
@@ -37,9 +38,10 @@ def process(video_path, api_key, premium):
     transcriber = Transcriber(model_size="tiny")
     transcript = transcriber.transcribe(video_path)
     
-    # 2. Analyze
+    # 2. Analyze (Now with optional multi-modal visual analysis)
     analyzer = VideoAnalyzer(api_key=api_key)
-    viral_moments = analyzer.find_viral_moments(transcript)
+    video_to_upload = video_path if visual_ai else None
+    viral_moments = analyzer.find_viral_moments(transcript, video_path=video_to_upload)
     
     if not viral_moments:
         console.print("[bold yellow]Using fallback moment.[/bold yellow]")
@@ -53,7 +55,8 @@ def process(video_path, api_key, premium):
     os.makedirs(output_dir, exist_ok=True)
     
     for i, moment in enumerate(viral_moments):
-        clean_headline = moment['headline'].replace(' ', '_').lower()[:30]
+        # Sanitize filename
+        clean_headline = "".join([c if c.isalnum() else "_" for c in moment['headline']])[:30].lower()
         base_name = f"clip_{i+1}_{clean_headline}"
         
         # A. Cut Raw Clip
@@ -69,11 +72,9 @@ def process(video_path, api_key, premium):
             editor.premium_verticalize(raw_output, motion_path, v_output)
             
             # D. Subtitles
-            # Extract segments just for this clip's time range
             clip_segs = []
             for s in transcript['segments']:
                 if s['start'] >= moment['start'] and s['end'] <= moment['end']:
-                    # Offset timestamps to start at 0 for the new clip
                     new_seg = s.copy()
                     new_seg['start'] -= moment['start']
                     new_seg['end'] -= moment['start']
@@ -97,8 +98,8 @@ def process(video_path, api_key, premium):
                 )
                 console.print(f"[bold cyan]✨ Professional Edit Complete:[/bold cyan] {final_output}")
                 # Cleanup temp
-                os.remove(v_output)
-                os.remove(raw_output)
+                if os.path.exists(v_output): os.remove(v_output)
+                if os.path.exists(raw_output): os.remove(raw_output)
             except Exception as e:
                 console.print(f"[bold red]Subtitle burn failed:[/bold red] {e}")
 
