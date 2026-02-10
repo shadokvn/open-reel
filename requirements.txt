@@ -1,0 +1,7 @@
+moviepy
+openai-whisper
+ffmpeg-python
+rich
+click
+google-generativeai
+python-dotenv
